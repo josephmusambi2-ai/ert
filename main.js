@@ -122,7 +122,7 @@ function render(note){
  var bar=mk("div","abar");
  bar.append(mk("p","anote",REMOTE?"Changes go live for every visitor as soon as they save.":"Preview mode: changes are saved in this browser only. Connect Supabase to publish for everyone."),btn("Sign out",function(){try{sessionStorage.removeItem(SS)}catch(e){}render()},"ghost"));
  root.appendChild(bar);
- var m=mk("p","ok","Edit the text, add a photo, or hide a space. Each change saves on its own.");m.id="admMsg";m.setAttribute("role","status");root.appendChild(m);
+ var m=mk("p","ok","Edit the text, add a photo, or hide a space. Each change saves on its own.");m.id="admMsg";m.setAttribute("role","status");root.appendChild(m);payAdmin();slidesAdmin();
  Object.keys(PAGES).forEach(function(pg){
   var list=els.filter(function(e){return e.getAttribute("data-page")===pg});if(!list.length)return;
   root.appendChild(mk("h2",null,PAGES[pg]));
@@ -142,6 +142,65 @@ function render(note){
  });
 }
 
-load().then(function(){els.forEach(apply);if(document.getElementById("p-admin"))render()});
+
+/* ---- payment details (admin controlled, can be switched off) ---- */
+var PHONE="+254 724 487430",PTEL="+254724487430";
+function pcfg(){var s=slots.payments||{},c={};try{c=JSON.parse(s.label)||{}}catch(e){}return{c:c,on:!!s.label&&!s.hidden}}
+function payRender(){
+ var b=document.getElementById("payBox");if(!b)return;b.textContent="";var p=pcfg(),c=p.c;
+ var gs=[["M-Pesa",[["Paybill / Till",c.till],["Account name",c.mname]]],["Bank transfer",[["Bank",c.bank],["Account name",c.bname],["Account no.",c.bno]]]].map(function(g){return[g[0],g[1].filter(function(r){return r[1]})]}).filter(function(g){return g[1].length});
+ var g=mk("div","grid");
+ if(p.on&&gs.length){gs.forEach(function(x){var d=mk("div","pay"),dl=mk("dl");d.appendChild(mk("h3",null,x[0]));x[1].forEach(function(r){dl.appendChild(mk("dt",null,r[0]));var dd=mk("dd",null,r[1]),cp=mk("button","cp","Copy");cp.type="button";cp.onclick=function(){try{navigator.clipboard.writeText(r[1]);cp.textContent="Copied";setTimeout(function(){cp.textContent="Copy"},1500)}catch(e){}};dd.appendChild(cp);dl.appendChild(dd)});d.appendChild(dl);g.appendChild(d)})}
+ else{var d=mk("div","pay"),q=mk("p",null,"To donate, please call or WhatsApp us on "+PHONE+" and we will guide you step by step.");d.appendChild(mk("h3",null,"Give by phone"));d.appendChild(q);
+  var a1=mk("a","btn alt","Call "+PHONE);a1.href="tel:"+PTEL;var a2=mk("a","btn alt","WhatsApp us");a2.href="https://wa.me/"+PTEL.slice(1);a2.target="_blank";a2.rel="noopener";d.append(a1,a2);g.appendChild(d)}
+ b.appendChild(g);
+}
+function payAdmin(){
+ var p=pcfg(),c=p.c,box=mk("div","apay");box.appendChild(mk("h2",null,"Payment details"));
+ box.appendChild(mk("p","anote","Turn this on to show M-Pesa and bank details on the Donate page. Turned off, visitors only see your phone number."));
+ var tl=mk("label","atog"),tg=mk("input");tg.type="checkbox";tg.checked=p.on;tl.append(tg,document.createTextNode(" Show payment details on the Donate page"));box.appendChild(tl);
+ var F=[["till","M-Pesa Paybill / Till number"],["mname","M-Pesa account name"],["bank","Bank name"],["bname","Bank account name"],["bno","Bank account number"]],ins={};
+ F.forEach(function(f){var l=mk("label",null,f[1]),i=mk("input");i.type="text";i.value=c[f[0]]||"";i.id="pay-"+f[0];l.setAttribute("for",i.id);ins[f[0]]=i;box.append(l,i)});
+ function save(){var v={};F.forEach(function(f){v[f[0]]=ins[f[0]].value.trim()});var old=slots.payments;slots.payments={label:JSON.stringify(v),hidden:!tg.checked};
+  persist("payments").then(function(){payRender();msg(tg.checked?"Payment details saved and showing on the site.":"Saved. Payment details are hidden; visitors see your phone number.")}).catch(function(e){slots.payments=old;fail(e)})}
+ tg.onchange=save;box.appendChild(btn("Save payment details",save));root.appendChild(box);
+}
+
+/* ---- home slider photos (upload from admin, no file naming) ---- */
+function slidesApply(){document.querySelectorAll(".sl").forEach(function(el,n){var s=slots["slide-"+(n+1)]||{};if(s.image_url){el.dataset.adm=1;el.style.backgroundImage="url("+s.image_url+")"}})}
+function slidesAdmin(){
+ root.appendChild(mk("h2",null,"Home slider photos"));
+ root.appendChild(mk("p","anote","Click Upload on a slide and choose a photo. No renaming needed. Wide landscape photos look best."));
+ for(var n=1;n<=4;n++)(function(n){
+  var k="slide-"+n,s=slots[k]||{},row=mk("div","arow"),th=mk("div","athumb");
+  if(s.image_url){var im=mk("img");im.src=s.image_url;im.alt="";th.appendChild(im)}else th.textContent="No photo";
+  var body=mk("div","abody"),bs=mk("div","abtns"),fi=mk("input");fi.type="file";fi.accept="image/*";fi.hidden=true;
+  function save(patch,t){var old=slots[k]||{};slots[k]=Object.assign({},old,patch);persist(k).then(function(){slidesApply();msg(t);render()}).catch(function(e){slots[k]=old;fail(e)})}
+  fi.onchange=function(){var f=fi.files[0];if(!f)return;msg("Uploading...");upload(k,f).then(function(u){save({image_url:u},"Slide "+n+" photo saved.")}).catch(fail)};
+  bs.append(btn(s.image_url?"Replace photo":"Upload photo",function(){fi.click()}),fi);
+  if(s.image_url)bs.appendChild(btn("Remove photo",function(){save({image_url:null},"Slide "+n+" photo removed. Reload the page to see the colour slide.")},"ghost"));
+  body.append(mk("p",null,"Slide "+n),bs);row.append(th,body);root.appendChild(row);
+ })(n);
+}
+load().then(function(){els.forEach(apply);payRender();slidesApply();if(document.getElementById("p-admin"))render()});
 document.addEventListener("click",function(ev){var a=ev.target.closest?ev.target.closest("a"):null;if(a&&a.getAttribute("href")==="#admin")setTimeout(render,0)});
+})();
+
+(function(){
+var d=document,h=d.querySelector("header .wrap"),nav=d.querySelector("nav");
+var b=d.createElement("button");b.className="menu";b.type="button";b.setAttribute("aria-label","Open menu");b.setAttribute("aria-expanded","false");b.innerHTML="&#9776;";h.insertBefore(b,h.firstChild);
+var sc=d.createElement("div");sc.className="scrim";d.body.appendChild(sc);
+function set(o){d.body.classList.toggle("open",o);b.setAttribute("aria-expanded",o);b.innerHTML=o?"&times;":"&#9776;"}
+b.onclick=function(){set(!d.body.classList.contains("open"))};sc.onclick=function(){set(false)};
+nav.addEventListener("click",function(e){if(e.target.closest("a"))set(false)});
+d.addEventListener("keydown",function(e){if(e.key==="Escape")set(false)});
+var sl=d.querySelectorAll(".sl"),dt=d.querySelector(".dots"),i=0,t;
+if(!sl.length)return;
+sl.forEach(function(el,n){
+ var ex=[".jpg",".jpeg",".png",".webp"],k=0;(function tr(){if(k>=ex.length)return;var im=new Image();im.onload=function(){if(!el.dataset.adm)el.style.backgroundImage="url(slide"+(n+1)+ex[k]+")"};im.onerror=function(){k++;tr()};im.src="slide"+(n+1)+ex[k]})();
+ var x=d.createElement("button");x.type="button";x.setAttribute("aria-label","Slide "+(n+1));x.onclick=function(){go(n);auto()};dt.appendChild(x);
+});
+function go(n){i=n;sl.forEach(function(e,k){e.classList.toggle("on",k===n)});dt.childNodes.forEach(function(e,k){e.classList.toggle("on",k===n)})}
+function auto(){clearInterval(t);if(!matchMedia("(prefers-reduced-motion:reduce)").matches)t=setInterval(function(){go((i+1)%sl.length)},3000)}
+go(0);auto();
 })();
